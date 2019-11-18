@@ -1,0 +1,78 @@
+library(DESeq2)
+library(dplyr)
+library(tidyr)
+library(data.table)
+library(org.Hs.eg.db)
+library("AnnotationDbi")
+
+counts <- as.vector(read.csv("yogurt_galaxycounts.csv", header=TRUE, sep=","))
+test <-(counts[,-1])
+head(test)
+rownames(test) <- as.character(counts[,1])
+head(test)
+sample_data <- as.matrix(read.csv("yogurt_sample_data.csv",header=TRUE, sep=","))
+head(sample_data)
+nrow(sample_data)
+
+dds <- DESeqDataSetFromMatrix(countData = test,
+                              colData = sample_data,
+                              design = ~ time + condition + time:condition)
+
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+
+head(assay(dds))
+
+dds <- DESeq(dds, test="LRT", reduced = ~ time + condition)
+dds
+
+resultsNames(dds)
+
+res <- results(dds,contrast = c("condition","yogurt","milk") )
+head(res)
+summary(res)
+
+#regularized log transformation
+rld <- rlog(dds)
+head(assay(rld))
+
+#variance stablizied transformation
+vsd <- vst(dds, blind=FALSE)
+head(assay(vsd))
+
+vst <- as.data.frame(assay(vsd),row.names = res$symbol)
+head(vst)
+vst<-na.omit(vst)
+
+write.csv(vst,"C:/Users/grahamb2/OneDrive/Documents/MS4 Thesis Research/RNA-seq/vst_counts.csv", col.names = TRUE, row.names = TRUE)
+
+#normal transformation
+ntd <- normTransform(dds)
+head(assay(ntd))
+
+#open vst_counts
+vst <- read.csv("vst_counts.csv")
+
+#create new columns from pre-post difference
+vst$milk_2 <- vst$milk_post_2 - vst$milk_pre_2
+vst$milk_5 <- vst$milk_post_5 - vst$milk_pre_5
+vst$milk_12 <- vst$milk_post_12 - vst$milk_pre_12
+vst$milk_14 <- vst$milk_post_14 - vst$milk_pre_14
+vst$yogurt_9 <- vst$yogurt_post_9 - vst$yogurt_pre_9
+vst$yogurt_17 <- vst$yogurt_post_17 - vst$yogurt_pre_17
+vst$yogurt_21 <- vst$yogurt_post_21 - vst$yogurt_pre_21
+
+head(vst)
+ncol(vst)
+
+write.csv(vst,"C:/Users/grahamb2/OneDrive/Documents/MS4 Thesis Research/RNA-seq/vst_counts_subtracted.csv", col.names = TRUE, row.names = TRUE)
+
+#change names from ensembl IDs to gene symbol
+#check what format org.HS.eg.db will accept
+columns(org.Hs.eg.db)
+
+vst$symbol <- mapIds(org.Hs.eg.db, 
+                     keys=row.names(vst), 
+                     column="SYMBOL", 
+                     keytype="REFSEQ",
+                     multiVals="first")
